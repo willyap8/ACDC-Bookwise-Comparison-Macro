@@ -1,0 +1,796 @@
+Option Explicit
+
+' ============================================================
+'  ACDC Data Migration - Bookwise Daily Comparison Macro v1
+'  Sub: ReconcileDailyReport
+'  Paste this entire module into the add-in workbook.
+'  Run while the MASTER data worksheet is the active sheet.
+'  Installed as an Excel Add-In (.xlam) for reuse across files.
+' ============================================================
+
+Public Sub ReconcileDailyReport()
+
+    Dim wsMaster        As Worksheet
+    Dim wsDaily         As Worksheet
+    Dim wbDaily         As Workbook
+    Dim wbMaster        As Workbook
+    Dim wsMod           As Worksheet
+    Dim wsCan           As Worksheet
+    Dim wsNew           As Worksheet
+    Dim wsAudit         As Worksheet
+    Dim dailyDict       As Object
+    Dim masterDict      As Object
+    Dim dupDict         As Object
+    Dim lo              As ListObject
+    Dim tbl             As ListObject
+
+    Dim dailyPath       As String
+    Dim masterDataStart As Long
+    Dim dailyDataStart  As Long
+    Dim lastRowMaster   As Long
+    Dim lastRowDaily    As Long
+    Dim lastCol         As Long
+    Dim bookCol         As Long
+    Dim patientCol      As Long
+    Dim startTimeCol    As Long
+    Dim medicareCol     As Long
+    Dim consultantCol   As Long
+    Dim postcodeCol     As Long
+    Dim dailyBookCol    As Long
+
+    Dim i               As Long
+    Dim j               As Long
+    Dim k               As Long
+    Dim r               As Long
+    Dim totalProcessed  As Long
+    Dim modifiedCount   As Long
+    Dim cancelledCount  As Long
+    Dim newCount        As Long
+    Dim totalRows       As Long
+    Dim pct             As Long
+    Dim auditNextRow    As Long
+    Dim dailyRow        As Long
+
+    Dim bookNo          As String
+    Dim dKey            As String
+    Dim masterVal       As String
+    Dim dailyVal        As String
+    Dim blankRows       As String
+    Dim dupRows         As String
+    Dim dupMsg          As String
+    Dim modified        As Boolean
+    Dim isDiff          As Boolean
+    Dim isExcluded      As Boolean
+    Dim tableExists     As Boolean
+    Dim hasOtherData    As Boolean
+    Dim paramMatch      As Boolean
+    Dim runTime         As Date
+
+    runTime = Now()
+
+    ' --------------------------------------------------------
+    ' 0. SHEET NAME VALIDATION
+    '    Absolute first check. No performance flags set yet.
+    '    Exit immediately if not on the MASTER sheet.
+    ' --------------------------------------------------------
+    If ActiveSheet.Name <> "MASTER" Then
+        MsgBox "This macro is only designed to run on the master sheet. " & _
+               "Please recheck the sheet you are running on and try again.", _
+               vbCritical, "Wrong Sheet"
+        Exit Sub
+    End If
+
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+
+    On Error GoTo CleanFail
+
+    ' --------------------------------------------------------
+    ' 1. Reference MASTER workbook and active sheet
+    '    NOTE: When running from an Excel Add-In (.xlam) via
+    '    Quick Access Toolbar, ThisWorkbook refers to the add-in
+    '    file itself. ActiveSheet.Parent always resolves to the
+    '    workbook the user is working in, regardless of how the
+    '    macro is launched. This is the correct pattern for
+    '    add-in hosted macros.
+    ' --------------------------------------------------------
+    Set wsMaster = ActiveSheet
+    Set wbMaster = ActiveSheet.Parent
+
+    ' --------------------------------------------------------
+    ' 2. Identify lastCol from MASTER header row 11
+    '    HARD CAP at column 20 (Column T).
+    '    Anything beyond Column T is never read, compared,
+    '    highlighted, or copied regardless of sheet content.
+    ' --------------------------------------------------------
+    lastCol = wsMaster.Cells(11, wsMaster.Columns.Count).End(xlToLeft).Column
+    If lastCol > 20 Then lastCol = 20   ' Hard cap at Column T
+
+    If lastCol < 1 Or SafeText(wsMaster.Cells(11, 1).Value) = "" Then
+        MsgBox "Could not detect column headers in row 11 of this sheet." & vbCrLf & vbCrLf & _
+               "Ensure you are running this macro while the MASTER data sheet is active.", _
+               vbCritical, "Setup Error"
+        GoTo CleanFail
+    End If
+
+    ' --------------------------------------------------------
+    ' 3. FILE PICKER
+    '    Runs before ANY structural changes to MASTER.
+    '    Cancel routes to CleanExit - MASTER is untouched.
+    ' --------------------------------------------------------
+    dailyPath = Application.GetOpenFilename( _
+        FileFilter:="Excel Files (*.xlsx;*.xlsm;*.xls;*.xlsb),*.xlsx;*.xlsm;*.xls;*.xlsb", _
+        Title:="Select the Daily Report to Reconcile")
+
+    If dailyPath = "False" Then
+        MsgBox "No file selected. Macro cancelled.", vbExclamation, "Cancelled"
+        GoTo CleanExit
+    End If
+
+    ' --------------------------------------------------------
+    ' 4. Open DAILY workbook (read-only)
+    ' --------------------------------------------------------
+    Set wbDaily = Workbooks.Open(Filename:=dailyPath, ReadOnly:=True)
+    Set wsDaily = wbDaily.ActiveSheet
+
+    ' --------------------------------------------------------
+    ' 5. SEARCH PARAMETER VALIDATION (rows 2-8, columns A and C)
+    '    Labels in column A (col 1), values in column C (col 3).
+    '    Both must match exactly. Runs before MASTER is modified.
+    ' --------------------------------------------------------
+    paramMatch = True
+    For r = 2 To 8
+        If SafeText(wsMaster.Cells(r, 1).Value) <> SafeText(wsDaily.Cells(r, 1).Value) Then
+            paramMatch = False
+            Exit For
+        End If
+        If SafeText(wsMaster.Cells(r, 3).Value) <> SafeText(wsDaily.Cells(r, 3).Value) Then
+            paramMatch = False
+            Exit For
+        End If
+    Next r
+
+    If Not paramMatch Then
+        MsgBox "The report search parameters appear to be different, please recheck the daily report and try again.", _
+               vbCritical, "Parameter Mismatch"
+        GoTo CleanFail
+    End If
+
+    ' --------------------------------------------------------
+    ' 6. MASTER PREP: Delete blank separator row 12 if present.
+    '    masterDataStart is always set to 12 after this block.
+    '    FIX: Previously set to 13 on second+ runs, causing the
+    '    first booking row to be skipped when building masterDict,
+    '    which made it appear as a false-positive new booking.
+    ' --------------------------------------------------------
+    If Application.WorksheetFunction.CountA(wsMaster.Rows(12)) = 0 Then
+        wsMaster.Rows(12).Delete Shift:=xlShiftUp
+    End If
+    masterDataStart = 12
+
+    ' --------------------------------------------------------
+    ' 7. Determine DAILY data start row (never modify DAILY)
+    ' --------------------------------------------------------
+    If Application.WorksheetFunction.CountA(wsDaily.Rows(12)) = 0 Then
+        dailyDataStart = 13
+    Else
+        dailyDataStart = 12
+    End If
+
+    ' --------------------------------------------------------
+    ' 8. Initial last-row estimate (for table conversion range)
+    ' --------------------------------------------------------
+    lastRowMaster = wsMaster.Cells(wsMaster.Rows.Count, 1).End(xlUp).Row
+    If lastRowMaster < masterDataStart Then
+        MsgBox "No data rows found below the header in the MASTER sheet.", _
+               vbExclamation, "No Data"
+        GoTo CleanFail
+    End If
+
+    ' --------------------------------------------------------
+    ' 9. Convert MASTER range to Excel Table if not already
+    ' --------------------------------------------------------
+    tableExists = False
+    For Each lo In wsMaster.ListObjects
+        If lo.HeaderRowRange.Row = 11 Then
+            tableExists = True
+            Exit For
+        End If
+    Next lo
+
+    If Not tableExists Then
+        Set tbl = wsMaster.ListObjects.Add( _
+            xlSrcRange, _
+            wsMaster.Range(wsMaster.Cells(11, 1), wsMaster.Cells(lastRowMaster, lastCol)), _
+            , xlYes)
+        tbl.Name = "MasterData"
+    End If
+
+    ' --------------------------------------------------------
+    ' 10. FONT STANDARDISATION (neutralises Wingdings/symbol fonts)
+    ' --------------------------------------------------------
+    Call StandardiseFont(wsMaster)
+    Call StandardiseFont(wsDaily)
+
+    ' --------------------------------------------------------
+    ' 11. REQUIRED COLUMNS
+    '     startTimeCol = 0 is non-fatal (time formatting skipped).
+    '     Excluded cols = 0 means header not found within A:T;
+    '     exclusion is skipped gracefully for that column.
+    ' --------------------------------------------------------
+    bookCol       = FindHeaderColumn(wsMaster, "Book No.",        lastCol)
+    patientCol    = FindHeaderColumn(wsMaster, "Patient",         lastCol)
+    startTimeCol  = FindHeaderColumn(wsMaster, "Start Time",      lastCol)
+    medicareCol   = FindHeaderColumn(wsMaster, "Medicare Number", lastCol)
+    consultantCol = FindHeaderColumn(wsMaster, "Consultant",      lastCol)
+    postcodeCol   = FindHeaderColumn(wsMaster, "Postcode",        lastCol)
+
+    If bookCol = 0 Then
+        MsgBox "Critical: Column 'Book No.' was not found in MASTER header row 11 within columns A to T." & vbCrLf & _
+               "Verify the column name and try again.", _
+               vbCritical, "Missing Column"
+        GoTo CleanFail
+    End If
+    If patientCol = 0 Then
+        MsgBox "Critical: Column 'Patient' was not found in MASTER header row 11 within columns A to T." & vbCrLf & _
+               "Verify the column name and try again.", _
+               vbCritical, "Missing Column"
+        GoTo CleanFail
+    End If
+
+    ' --------------------------------------------------------
+    ' 12. Refine lastRowMaster using the Book No. column
+    ' --------------------------------------------------------
+    lastRowMaster = wsMaster.Cells(wsMaster.Rows.Count, bookCol).End(xlUp).Row
+    If lastRowMaster < masterDataStart Then
+        MsgBox "No booking data found in the MASTER 'Book No.' column.", _
+               vbExclamation, "No Data"
+        GoTo CleanFail
+    End If
+
+    ' --------------------------------------------------------
+    ' 13. DUPLICATE BOOK NO. CHECK
+    '     Runs after sheet name check and search parameter
+    '     validation. Uses a Dictionary to detect any Book No.
+    '     appearing more than once. Reports all offending rows.
+    ' --------------------------------------------------------
+    Set dupDict = CreateObject("Scripting.Dictionary")
+    dupDict.CompareMode = 1   ' vbTextCompare: case-insensitive
+
+    dupMsg = ""
+    For i = masterDataStart To lastRowMaster
+        dKey = SafeText(wsMaster.Cells(i, bookCol).Value)
+        If dKey <> "" Then
+            If dupDict.Exists(dKey) Then
+                dupDict(dKey) = dupDict(dKey) & ", " & i
+            Else
+                dupDict.Add dKey, CStr(i)
+            End If
+        End If
+    Next i
+
+    Dim dk As Variant
+    For Each dk In dupDict.Keys
+        If InStr(CStr(dupDict(dk)), ",") > 0 Then
+            dupMsg = dupMsg & "  Book No. " & dk & "  ->  Rows: " & dupDict(dk) & vbCrLf
+        End If
+    Next dk
+
+    If Len(dupMsg) > 0 Then
+        MsgBox "Data integrity error: Duplicate 'Book No.' values detected in the MASTER sheet." & vbCrLf & vbCrLf & _
+               dupMsg & vbCrLf & _
+               "All duplicate Booking Numbers must be resolved before running this macro.", _
+               vbCritical, "Duplicate Booking Numbers Detected"
+        GoTo CleanFail
+    End If
+
+    Set dupDict = Nothing
+
+    ' --------------------------------------------------------
+    ' 14. DATA INTEGRITY: Blank Book No. on relevant rows
+    '     Flags rows where at least one OTHER cell has a value.
+    '     Genuinely empty rows are silently skipped.
+    ' --------------------------------------------------------
+    blankRows = ""
+    For i = masterDataStart To lastRowMaster
+        If SafeText(wsMaster.Cells(i, bookCol).Value) = "" Then
+            hasOtherData = False
+            For k = 1 To lastCol
+                If k <> bookCol Then
+                    If SafeText(wsMaster.Cells(i, k).Value) <> "" Then
+                        hasOtherData = True
+                        Exit For
+                    End If
+                End If
+            Next k
+            If hasOtherData Then
+                blankRows = blankRows & i & ", "
+            End If
+        End If
+    Next i
+
+    If Len(blankRows) > 0 Then
+        blankRows = Left(blankRows, Len(blankRows) - 2)
+        MsgBox "Data integrity error: Blank 'Book No.' values found in MASTER rows:" & vbCrLf & _
+               blankRows & vbCrLf & vbCrLf & _
+               "All blank Book No. values must be resolved before running this macro.", _
+               vbCritical, "Data Integrity Error"
+        GoTo CleanFail
+    End If
+
+    ' --------------------------------------------------------
+    ' 15. SETUP REVIEW SHEETS (create or fully clear)
+    '     "Dt/Tm Added by Macro" is the timestamp column header.
+    ' --------------------------------------------------------
+    Set wsMod = SetupReviewSheet(wbMaster, "Modified Bookings to Review",  wsMaster, lastCol)
+    Set wsCan = SetupReviewSheet(wbMaster, "Cancelled Bookings to Review", wsMaster, lastCol)
+    Set wsNew = SetupReviewSheet(wbMaster, "New Bookings to Review",       wsMaster, lastCol)
+
+    ' --------------------------------------------------------
+    ' 16. CLEAR ALL MASTER DATA HIGHLIGHTS (fresh slate each run)
+    ' --------------------------------------------------------
+    wsMaster.Range( _
+        wsMaster.Cells(masterDataStart, 1), _
+        wsMaster.Cells(lastRowMaster, lastCol)).Interior.ColorIndex = xlNone
+
+    ' --------------------------------------------------------
+    ' 17. BUILD DAILY DICTIONARY (Book No. -> row number)
+    ' --------------------------------------------------------
+    Set dailyDict = CreateObject("Scripting.Dictionary")
+    dailyDict.CompareMode = 1   ' vbTextCompare: case-insensitive
+
+    dailyBookCol = FindHeaderColumn(wsDaily, "Book No.", 20)
+    If dailyBookCol = 0 Then
+        MsgBox "Critical: Column 'Book No.' was not found in the DAILY report header row 11.", _
+               vbCritical, "Missing Column"
+        GoTo CleanFail
+    End If
+
+    lastRowDaily = wsDaily.Cells(wsDaily.Rows.Count, dailyBookCol).End(xlUp).Row
+
+    For i = dailyDataStart To lastRowDaily
+        dKey = SafeText(wsDaily.Cells(i, dailyBookCol).Value)
+        If dKey <> "" Then
+            If Not dailyDict.Exists(dKey) Then
+                dailyDict.Add dKey, i
+            End If
+        End If
+    Next i
+
+    ' --------------------------------------------------------
+    ' 18. BUILD MASTER DICTIONARY (Book No. -> row number)
+    '     Used to identify new bookings in DAILY not in MASTER.
+    ' --------------------------------------------------------
+    Set masterDict = CreateObject("Scripting.Dictionary")
+    masterDict.CompareMode = 1   ' vbTextCompare: case-insensitive
+
+    For i = masterDataStart To lastRowMaster
+        dKey = SafeText(wsMaster.Cells(i, bookCol).Value)
+        If dKey <> "" Then
+            If Not masterDict.Exists(dKey) Then
+                masterDict.Add dKey, i
+            End If
+        End If
+    Next i
+
+    ' --------------------------------------------------------
+    ' 19. RECONCILIATION LOOP
+    ' --------------------------------------------------------
+    totalProcessed = 0
+    modifiedCount  = 0
+    cancelledCount = 0
+    newCount       = 0
+    totalRows      = lastRowMaster - masterDataStart + 1
+
+    For i = masterDataStart To lastRowMaster
+
+        bookNo = SafeText(wsMaster.Cells(i, bookCol).Value)
+        If bookNo = "" Then GoTo NextMasterRow   ' skip genuinely empty rows
+
+        totalProcessed = totalProcessed + 1
+
+        If totalRows > 0 Then
+            pct = CLng((CDbl(totalProcessed) / CDbl(totalRows)) * 100)
+        Else
+            pct = 100
+        End If
+        Application.StatusBar = "Reconciling... " & pct & "% " & _
+                                 "(" & totalProcessed & " of " & totalRows & " rows)"
+
+        If Not dailyDict.Exists(bookNo) Then
+
+            ' ------------------------------------------------
+            ' CANCELLED: Book No. absent from DAILY
+            ' ------------------------------------------------
+            wsMaster.Range( _
+                wsMaster.Cells(i, 1), _
+                wsMaster.Cells(i, lastCol)).Interior.Color = vbRed
+
+            Call CopyRowWithTimestamp(wsMaster, wsCan, i, runTime, startTimeCol, lastCol)
+            cancelledCount = cancelledCount + 1
+
+        Else
+
+            ' ------------------------------------------------
+            ' EXISTS IN DAILY: compare cell by cell
+            '
+            ' Excluded columns (Medicare Number, Consultant,
+            ' Postcode) are skipped entirely - no comparison,
+            ' no yellow highlight on MASTER, not counted.
+            ' ------------------------------------------------
+            dailyRow = CLng(dailyDict(bookNo))
+            modified = False
+
+            For j = 1 To lastCol
+
+                ' Skip excluded columns completely
+                isExcluded = False
+                If medicareCol   > 0 And j = medicareCol   Then isExcluded = True
+                If consultantCol > 0 And j = consultantCol Then isExcluded = True
+                If postcodeCol   > 0 And j = postcodeCol   Then isExcluded = True
+                If isExcluded Then GoTo NextCompareCol
+
+                masterVal = SafeText(wsMaster.Cells(i, j).Value)
+                dailyVal  = SafeText(wsDaily.Cells(dailyRow, j).Value)
+
+                isDiff = False
+                If j = patientCol Then
+                    ' Patient column: ignore case-only differences
+                    If LCase(masterVal) <> LCase(dailyVal) Then isDiff = True
+                Else
+                    If masterVal <> dailyVal Then isDiff = True
+                End If
+
+                If isDiff Then
+                    wsMaster.Cells(i, j).Interior.Color = vbYellow
+                    modified = True
+                End If
+
+NextCompareCol:
+            Next j
+
+            If modified Then
+                Call CopyModifiedRow( _
+                    wsDaily, wsMod, dailyRow, wsMaster, i, _
+                    patientCol, runTime, startTimeCol, lastCol, _
+                    medicareCol, consultantCol, postcodeCol)
+                modifiedCount = modifiedCount + 1
+            End If
+
+        End If
+
+NextMasterRow:
+    Next i
+
+    ' --------------------------------------------------------
+    ' 20. NEW BOOKINGS: DAILY rows absent from MASTER
+    ' --------------------------------------------------------
+    Application.StatusBar = "Checking for new bookings in Daily report..."
+
+    For i = dailyDataStart To lastRowDaily
+        dKey = SafeText(wsDaily.Cells(i, dailyBookCol).Value)
+        If dKey <> "" Then
+            If Not masterDict.Exists(dKey) Then
+                Call CopyRowWithTimestamp(wsDaily, wsNew, i, runTime, startTimeCol, lastCol)
+                newCount = newCount + 1
+            End If
+        End If
+    Next i
+
+    ' --------------------------------------------------------
+    ' 21. AUDIT LOG
+    ' --------------------------------------------------------
+    Set wsAudit = GetOrCreateAuditSheet(wbMaster)
+    wsAudit.Unprotect
+
+    auditNextRow = wsAudit.Cells(wsAudit.Rows.Count, 1).End(xlUp).Row + 1
+    With wsAudit
+        .Cells(auditNextRow, 1).Value        = runTime
+        .Cells(auditNextRow, 1).NumberFormat = "dd/mm/yyyy hh:mm:ss"
+        .Cells(auditNextRow, 2).Value        = Environ("USERNAME")
+        .Cells(auditNextRow, 3).Value        = dailyPath
+        .Cells(auditNextRow, 4).Value        = totalProcessed
+        .Cells(auditNextRow, 5).Value        = modifiedCount
+        .Cells(auditNextRow, 6).Value        = cancelledCount
+        .Cells(auditNextRow, 7).Value        = newCount
+    End With
+
+    wsAudit.Protect DrawingObjects:=True, Contents:=True, Scenarios:=True
+
+    ' --------------------------------------------------------
+    ' 22. CLOSE DAILY WORKBOOK (without saving)
+    ' --------------------------------------------------------
+    wbDaily.Close SaveChanges:=False
+    Set wbDaily = Nothing
+
+    ' --------------------------------------------------------
+    ' 23. SUCCESS MESSAGE
+    ' --------------------------------------------------------
+    MsgBox "Reconciliation Complete" & vbCrLf & vbCrLf & _
+           "Total bookings processed:     " & totalProcessed & vbCrLf & _
+           "Modified bookings to review:  " & modifiedCount  & vbCrLf & _
+           "Cancelled bookings to review: " & cancelledCount & vbCrLf & _
+           "New bookings to review:       " & newCount, _
+           vbInformation, "Reconciliation Summary"
+
+    GoTo CleanExit
+
+' ============================================================
+'  ERROR HANDLING
+' ============================================================
+CleanFail:
+    If Not wbDaily Is Nothing Then
+        On Error Resume Next
+        wbDaily.Close SaveChanges:=False
+        On Error GoTo 0
+        Set wbDaily = Nothing
+    End If
+    On Error Resume Next
+    If Not wsAudit Is Nothing Then
+        wsAudit.Protect DrawingObjects:=True, Contents:=True, Scenarios:=True
+    End If
+    On Error GoTo 0
+    If Err.Number <> 0 Then
+        MsgBox "An unexpected error occurred during reconciliation." & vbCrLf & vbCrLf & _
+               "Error " & Err.Number & ": " & Err.Description & vbCrLf & vbCrLf & _
+               "The Daily file has not been saved or modified.", _
+               vbCritical, "Macro Error"
+    End If
+
+CleanExit:
+    Application.StatusBar    = False
+    Application.ScreenUpdating = True
+    Application.Calculation  = xlCalculationAutomatic
+    Application.EnableEvents = True
+    Exit Sub
+
+End Sub
+
+
+' ============================================================
+'  StandardiseFont
+'  Sets all fonts to Calibri from row 2 through last used row.
+'  Scoped to columns 1 through lastCol (capped at Column T).
+' ============================================================
+Public Sub StandardiseFont(ws As Worksheet)
+    Dim lastR As Long
+    Dim lastC As Long
+    On Error Resume Next
+    lastR = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    lastC = ws.Cells(11, ws.Columns.Count).End(xlToLeft).Column
+    If lastC > 20 Then lastC = 20
+    On Error GoTo 0
+    If lastR < 2 Or lastC < 1 Then Exit Sub
+    ws.Range(ws.Cells(2, 1), ws.Cells(lastR, lastC)).Font.Name = "Calibri"
+End Sub
+
+
+' ============================================================
+'  SafeText
+'  Safe variant-to-string conversion.
+'  Returns "" for Null, Empty, or cell error values.
+'  Prevents Runtime Error 13 (Type mismatch) throughout.
+' ============================================================
+Public Function SafeText(v As Variant) As String
+    On Error Resume Next
+    If IsNull(v) Or IsEmpty(v) Or IsError(v) Then
+        SafeText = ""
+    Else
+        SafeText = CStr(v)
+    End If
+    On Error GoTo 0
+End Function
+
+
+' ============================================================
+'  FindHeaderColumn
+'  Searches row 11 up to colLimit for headerName (case-insensitive).
+'  colLimit enforces the Column T cap when searching MASTER/DAILY.
+'  Returns the column index, or 0 if not found within the limit.
+' ============================================================
+Public Function FindHeaderColumn(ws As Worksheet, headerName As String, _
+                                  colLimit As Long) As Long
+    Dim c As Long
+    FindHeaderColumn = 0
+    For c = 1 To colLimit
+        If LCase(SafeText(ws.Cells(11, c).Value)) = LCase(headerName) Then
+            FindHeaderColumn = c
+            Exit Function
+        End If
+    Next c
+End Function
+
+
+' ============================================================
+'  SetupReviewSheet
+'  Creates or fully clears the named review sheet in wb.
+'  Copies MASTER headers (row 11, cols 1 to lastCol) to row 1.
+'  Appends "Dt/Tm Added by Macro" as the final column header.
+'  Data rows always start at row 2.
+' ============================================================
+Public Function SetupReviewSheet(wb As Workbook, sheetName As String, _
+                                  wsMaster As Worksheet, lastCol As Long) As Worksheet
+    Dim ws     As Worksheet
+    Dim s      As Worksheet
+    Dim exists As Boolean
+    Dim j      As Long
+
+    exists = False
+    For Each s In wb.Worksheets
+        If s.Name = sheetName Then
+            Set ws = s
+            exists = True
+            Exit For
+        End If
+    Next s
+
+    If Not exists Then
+        Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+        ws.Name = sheetName
+    Else
+        ws.Cells.Clear
+    End If
+
+    For j = 1 To lastCol
+        ws.Cells(1, j).Value = SafeText(wsMaster.Cells(11, j).Value)
+    Next j
+
+    ws.Cells(1, lastCol + 1).Value = "Dt/Tm Added by Macro"
+    ws.Rows(1).Font.Bold = True
+
+    Set SetupReviewSheet = ws
+End Function
+
+
+' ============================================================
+'  CopyRowWithTimestamp
+'  Copies srcRow from src to dest as values only.
+'  Only copies columns 1 to lastCol (Column T cap enforced).
+'  Applies hh:mm format to Start Time column if found.
+'  Appends run timestamp in the "Dt/Tm Added by Macro" column.
+'  Used for Cancelled Bookings and New Bookings sheets.
+' ============================================================
+Public Sub CopyRowWithTimestamp(src As Worksheet, dest As Worksheet, _
+                                 srcRow As Long, ts As Date, _
+                                 startTimeCol As Long, lastCol As Long)
+    Dim nextRow As Long
+    Dim j       As Long
+    Dim cellVal As Variant
+
+    nextRow = dest.Cells(dest.Rows.Count, 1).End(xlUp).Row + 1
+    If nextRow < 2 Then nextRow = 2
+
+    For j = 1 To lastCol
+        cellVal = src.Cells(srcRow, j).Value
+        If IsError(cellVal) Then
+            dest.Cells(nextRow, j).Value = ""
+        Else
+            dest.Cells(nextRow, j).Value = cellVal
+        End If
+        If j = startTimeCol And startTimeCol > 0 Then
+            dest.Cells(nextRow, j).NumberFormat = "hh:mm"
+        End If
+    Next j
+
+    dest.Cells(nextRow, lastCol + 1).Value        = ts
+    dest.Cells(nextRow, lastCol + 1).NumberFormat = "dd/mm/yyyy hh:mm:ss"
+End Sub
+
+
+' ============================================================
+'  CopyModifiedRow
+'  Copies dailyRow from wsDaily into wsMod (values only).
+'  Only copies columns 1 to lastCol (Column T cap enforced).
+'  Applies hh:mm format to Start Time column if found.
+'  Highlights yellow in review sheet only where DAILY differs
+'  from MASTER - applying same Patient case rule as main loop.
+'  Excluded columns (Medicare Number, Consultant, Postcode)
+'  are copied but never highlighted yellow in the review sheet.
+'  Appends run timestamp in the "Dt/Tm Added by Macro" column.
+' ============================================================
+Public Sub CopyModifiedRow(wsDaily As Worksheet, wsMod As Worksheet, _
+                            dailyRow As Long, wsMaster As Worksheet, _
+                            masterRow As Long, patientCol As Long, _
+                            ts As Date, startTimeCol As Long, lastCol As Long, _
+                            medicareCol As Long, consultantCol As Long, _
+                            postcodeCol As Long)
+    Dim nextRow    As Long
+    Dim j          As Long
+    Dim cellVal    As Variant
+    Dim masterVal  As String
+    Dim dailyVal   As String
+    Dim isDiff     As Boolean
+    Dim isExcluded As Boolean
+
+    nextRow = wsMod.Cells(wsMod.Rows.Count, 1).End(xlUp).Row + 1
+    If nextRow < 2 Then nextRow = 2
+
+    For j = 1 To lastCol
+
+        cellVal = wsDaily.Cells(dailyRow, j).Value
+        If IsError(cellVal) Then
+            wsMod.Cells(nextRow, j).Value = ""
+        Else
+            wsMod.Cells(nextRow, j).Value = cellVal
+        End If
+
+        If j = startTimeCol And startTimeCol > 0 Then
+            wsMod.Cells(nextRow, j).NumberFormat = "hh:mm"
+        End If
+
+        isExcluded = False
+        If medicareCol   > 0 And j = medicareCol   Then isExcluded = True
+        If consultantCol > 0 And j = consultantCol Then isExcluded = True
+        If postcodeCol   > 0 And j = postcodeCol   Then isExcluded = True
+
+        If Not isExcluded Then
+            masterVal = SafeText(wsMaster.Cells(masterRow, j).Value)
+            dailyVal  = SafeText(wsDaily.Cells(dailyRow, j).Value)
+
+            isDiff = False
+            If j = patientCol Then
+                If LCase(masterVal) <> LCase(dailyVal) Then isDiff = True
+            Else
+                If masterVal <> dailyVal Then isDiff = True
+            End If
+
+            If isDiff Then
+                wsMod.Cells(nextRow, j).Interior.Color = vbYellow
+            End If
+        End If
+
+    Next j
+
+    wsMod.Cells(nextRow, lastCol + 1).Value        = ts
+    wsMod.Cells(nextRow, lastCol + 1).NumberFormat = "dd/mm/yyyy hh:mm:ss"
+End Sub
+
+
+' ============================================================
+'  GetOrCreateAuditSheet
+'  Returns the visible, protected audit log sheet.
+'  Creates and formats it on first run if it does not exist.
+'  Main sub unprotects before writing and re-protects after.
+'  Columns: Run Date/Time | Run By | Daily File | Processed |
+'           Modified | Cancelled | New Bookings
+' ============================================================
+Public Function GetOrCreateAuditSheet(wb As Workbook) As Worksheet
+    Const AUDIT_NAME As String = "Reconcile Audit Log"
+    Dim ws As Worksheet
+    Dim s  As Worksheet
+
+    For Each s In wb.Worksheets
+        If s.Name = AUDIT_NAME Then
+            Set GetOrCreateAuditSheet = s
+            Exit Function
+        End If
+    Next s
+
+    Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    ws.Name    = AUDIT_NAME
+    ws.Visible = xlSheetVisible
+
+    With ws
+        .Cells(1, 1).Value = "Run Date/Time"
+        .Cells(1, 2).Value = "Run By (Username)"
+        .Cells(1, 3).Value = "Daily File Path"
+        .Cells(1, 4).Value = "Total Processed"
+        .Cells(1, 5).Value = "Modified"
+        .Cells(1, 6).Value = "Cancelled"
+        .Cells(1, 7).Value = "New Bookings"
+        .Rows(1).Font.Bold = True
+        .Columns(1).NumberFormat = "dd/mm/yyyy hh:mm:ss"
+        .Columns(1).ColumnWidth  = 20
+        .Columns(2).ColumnWidth  = 22
+        .Columns(3).ColumnWidth  = 80
+        .Columns(4).ColumnWidth  = 16
+        .Columns(5).ColumnWidth  = 12
+        .Columns(6).ColumnWidth  = 12
+        .Columns(7).ColumnWidth  = 14
+    End With
+
+    ws.Protect DrawingObjects:=True, Contents:=True, Scenarios:=True
+
+    Set GetOrCreateAuditSheet = ws
+End Function
