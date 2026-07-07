@@ -1,8 +1,10 @@
-# ACDC Data Migration — Bookwise Daily Comparison Macro v1
+# ACDC Data Migration — Bookwise Daily Comparison Macro V3.1
 
-> **ReconcileDailyReport** · VBA Excel Add-In · Clinical scheduling environment
+> **BookwiseReconcileDailyReportV3** · VBA Excel Add-In · Clinical scheduling environment
 
 A production-ready Excel Add-In that automatically compares a MASTER booking schedule against a daily Bookwise report, flags differences, and organises results into dedicated review sheets — without modifying any source data.
+
+> **Version note:** The current source of truth is **V3.1** (`BookwiseComparisonMacro.bas`). Earlier releases are preserved as Git tags — for example, check out `v1` to retrieve the original version. See [Version History](#12-version-history).
 
 ---
 
@@ -19,12 +21,13 @@ A production-ready Excel Add-In that automatically compares a MASTER booking sch
 9. [Installation as an Excel Add-In](#9-installation-as-an-excel-add-in)
 10. [What to Do If the Macro Stops](#10-what-to-do-if-the-macro-stops)
 11. [Important Reminders](#11-important-reminders)
+12. [Version History](#12-version-history)
 
 ---
 
 ## 1. What Does This Macro Do?
 
-The **ACDC Data Migration — Bookwise Daily Comparison Macro v1** is an automated comparison tool built into the MASTER scheduling workbook. Its purpose is to compare the MASTER booking schedule against a freshly generated Bookwise Daily Report, and clearly flag any differences so that staff can review and act on changes quickly and with confidence.
+The **ACDC Data Migration — Bookwise Daily Comparison Macro V3.1** is an automated comparison tool built into the MASTER scheduling workbook. Its purpose is to compare the MASTER booking schedule against a freshly generated Bookwise Daily Report, and clearly flag any differences so that staff can review and act on changes quickly and with confidence.
 
 The macro does **not** change any booking data in either the MASTER sheet or the Daily Report. It only applies colour highlights to draw attention to changes, and copies relevant rows into dedicated review sheets for easy actioning.
 
@@ -54,11 +57,14 @@ The macro is installed as an Excel Add-In (`.xlam`), making it available wheneve
 | Step | Action |
 |---|---|
 | **1** | Ensure the **MASTER** sheet tab is selected before doing anything else. The macro stops immediately if run from any other sheet. |
-| **2** | Click the **Reconcile Daily Report** button on the Quick Access Toolbar, or press `Alt + F8`, select `ReconcileDailyReport`, and click **Run**. |
-| **3** | A file browser opens. Navigate to and select the Bookwise Daily Report file for today, then click **Open**. |
-| **4** | A progress indicator appears in the status bar at the bottom of Excel. Do not interact with the workbook while the macro runs. |
-| **5** | A summary message appears on screen showing totals for Modified, Cancelled, and New bookings. |
-| **6** | Check the three review sheets for bookings that need attention. Each sheet is rebuilt fresh on every run. |
+| **2** | Ensure the MASTER sheet is **not** protected/locked. The macro stops with a clear message if the sheet is protected. |
+| **3** | Click the **Reconcile Daily Report** button on the Quick Access Toolbar, or press `Alt + F8`, select `BookwiseReconcileDailyReportV3`, and click **Run**. |
+| **4** | A file browser opens. Navigate to and select the Bookwise Daily Report file for today, then click **Open**. |
+| **5** | A progress indicator appears in the status bar at the bottom of Excel. Do not interact with the workbook while the macro runs. |
+| **6** | A summary message appears on screen showing totals for Modified, Cancelled, and New bookings. |
+| **7** | Check the three review sheets for bookings that need attention. Each sheet is rebuilt fresh on every run. |
+
+> **Procedure name:** In V3.1 the macro procedure is named `BookwiseReconcileDailyReportV3`. If you are upgrading from V1 (`ReconcileDailyReport`), your existing Quick Access Toolbar button will point to the old name and must be re-pointed to the new macro (see [Installation](#9-installation-as-an-excel-add-in), Step 5).
 
 ---
 
@@ -71,21 +77,25 @@ Given the clinical nature of this data, the macro includes a comprehensive set o
 | # | Safeguard Check | What It Prevents |
 |---|---|---|
 | 1 | **Correct sheet must be active** | The very first action is to check the active sheet tab is named exactly `MASTER`. If run from any other sheet, the macro exits immediately with no changes made. |
-| 2 | **User must select a Daily Report file** | If the file browser is cancelled, the macro exits cleanly. This check runs before any changes are made to MASTER — cancelling leaves everything exactly as it was. |
-| 3 | **Search parameters must match** | Rows 2–8 of both reports contain search filter labels (column A) and values (column C), such as the date range covered. These must match exactly. A mismatch suggests the wrong Daily Report has been selected. |
-| 4 | **Duplicate Booking Numbers in MASTER** | Every Booking Number in MASTER must appear only once. If duplicates are found, the macro stops and lists all offending row numbers. Duplicate entries would make comparison results unreliable. |
-| 5 | **Required columns must exist (A–T)** | The `Book No.` and `Patient` columns must be present in both reports within columns A to T. If either is missing, the macro stops and identifies the column. |
-| 6 | **No missing Booking Numbers on relevant rows** | Every row containing any booking data must have a Booking Number. Genuinely blank rows are silently skipped. Offending row numbers are listed before stopping. |
+| 2 | **MASTER sheet must be unlocked** | If the MASTER sheet is protected (locked), the macro stops **before** opening any file, so nothing is changed. This fail-fast check avoids partial runs against a sheet that cannot be highlighted. |
+| 3 | **Header row 11 must be present** | The macro confirms it can detect column headers in row 11 of the active sheet, guarding against being run on the wrong sheet layout. |
+| 4 | **User must select a Daily Report file** | If the file browser is cancelled, the macro exits cleanly. This check runs before any changes are made to MASTER — cancelling leaves everything exactly as it was. |
+| 5 | **Search parameters must match** | Rows 2–8 of both reports contain search filter labels (column A) and values (column C), such as the date range covered. These must match exactly. A mismatch suggests the wrong Daily Report has been selected. |
+| 6 | **Headers must match exactly (A–T)** | Every header in columns A to T (row 11) must be identical between MASTER and Daily — same spelling, case, and order. The macro stops and names the **first** mismatched column. Only A:T is compared, so only A:T headers need to match. |
+| 7 | **MASTER data range formats as a table** | The MASTER range is converted or resized to a structured table covering `A11` down to the last populated column. If merged report-header cells or another table block this, the macro stops with guidance rather than producing an unreliable range. |
+| 8 | **Duplicate Booking Numbers in MASTER** | Every Booking Number in MASTER must appear only once. If duplicates are found, the macro stops and lists all offending row numbers. Duplicate entries would make comparison results unreliable. |
+| 9 | **No missing Booking Numbers on relevant rows** | Every row containing any booking data must have a Booking Number. Genuinely blank rows are silently skipped. Offending row numbers are listed before stopping. |
 
 ### 4.2 Data Integrity Protections
 
 These protections are always active and built into the design of the macro:
 
 - **No booking data is ever changed.** The macro reads cell values for comparison only. It never writes to, overwrites, or deletes any booking information in either file.
-- **Only columns A to T are ever considered.** Any data beyond Column T is completely ignored — never read, compared, highlighted, or copied.
+- **Only columns A to T are ever compared.** Any data used in the comparison is capped at Column T — nothing beyond T is read, compared, highlighted, or copied. (Comment columns after T may be included in the MASTER *table range* for correct filtering, but are never part of the comparison.)
 - **The Daily Report is always opened read-only.** It is physically impossible for the macro to save changes back to the Daily Report file.
 - **All highlights are cleared and reapplied fresh on every run.** Highlights from a previous run never carry over incorrectly.
 - **Review sheets are fully cleared before each run.** All three review sheets are wiped and rebuilt from scratch every time.
+- **Dates are copied as verbatim text.** `Date` and `Date of Birth` values are written into the review sheets as text, preventing Excel from silently reinterpreting a `dd/mm/yyyy` value as a US `mm/dd/yyyy` date on copy.
 - **The Audit Log is protected against editing.** It can be read freely but not manually altered, preserving an accurate governance record.
 
 ---
@@ -99,7 +109,7 @@ Once all safeguards have passed, the macro compares the two reports and categori
 | Highlight | Meaning |
 |---|---|
 | 🟡 **Yellow cell** | One or more individual cells in this booking have a different value in the Daily Report. Only the specific changed cells are highlighted — not the whole row. |
-| 🔴 **Red row** | The entire booking row is highlighted red because the Booking Number no longer appears anywhere in the Daily Report. May indicate cancellation or removal. |
+| 🔴 **Red row** | The entire booking row (A:T) is highlighted red because the Booking Number no longer appears anywhere in the Daily Report. May indicate cancellation or removal. |
 | ⬜ **No highlight** | This booking is unchanged. It appears in the Daily Report with identical values in every compared column. |
 
 ---
@@ -128,9 +138,13 @@ When a modified booking is detected, the macro:
 
 If the only difference in the `Patient` column is capitalisation (e.g. `SMITH John` vs `Smith John`), this is **not** treated as a modification. Any other change to the patient name — such as a different name entirely — will still be flagged normally.
 
-#### Note on Start Time Display
+#### Special Rule: Start Time Normalisation
 
-Start times copied into the review sheet are automatically formatted as a readable time (e.g. `09:30`) rather than the underlying decimal value that Excel uses internally to store times.
+Start times are normalised to `hh:mm` **before** comparison. A genuine Excel time value and a text time (e.g. `"10:45"`) that represent the same time are treated as equal, so differing underlying formats do not raise a false "Modified" flag. Start times copied into the review sheet are formatted as a readable time (e.g. `09:30`).
+
+#### Special Rule: Date / Date of Birth Normalisation *(V3.1)*
+
+`Date` and `Date of Birth` values are normalised to a canonical `dd/mm/yyyy` string **before** comparison. This means a genuine Excel date value on one side and a text date (e.g. `"01/09/2026"`) on the other are treated as equal, preventing false "Modified" flags caused only by differing underlying date types or formats. Text dates are parsed explicitly as **day/month/year** (Australian order); any value that cannot be safely and unambiguously parsed falls back to a literal text comparison, so no incorrect date assumptions are ever made.
 
 ---
 
@@ -140,7 +154,7 @@ Start times copied into the review sheet are automatically formatted as a readab
 A booking is classified as Cancelled when its Booking Number is present on the MASTER sheet but cannot be found anywhere in the Daily Report.
 
 When a cancelled booking is detected, the macro:
-- Highlights the entire MASTER row **red**
+- Highlights the entire MASTER row (A:T) **red**
 - Copies the MASTER version of the booking row into **Cancelled Bookings to Review**
 - Records the run date and time in the **Dt/Tm Added by Macro** column
 
@@ -164,7 +178,7 @@ When a new booking is detected, the macro:
 
 ### 5.5 Unchanged Bookings
 
-If a booking exists in both reports with identical values in every compared column (taking into account all exclusions and the Patient case rule), no action is required. The MASTER row will have no highlight, and the booking will not appear in any of the three review sheets.
+If a booking exists in both reports with identical values in every compared column (taking into account all exclusions, the Patient case rule, and the Start Time / Date / Date of Birth normalisation rules), no action is required. The MASTER row will have no highlight, and the booking will not appear in any of the three review sheets.
 
 ---
 
@@ -178,6 +192,7 @@ Each of the three review sheets follows the same consistent layout:
 | **Row 2 onwards — Booking data** | One row per booking requiring review, starting immediately below the headers with no blank rows. |
 | **Dt/Tm Added by Macro** | Shows the exact date and time the macro run identified and copied that booking. |
 | **Yellow highlights** | Modified Bookings to Review only. Cells that differ from the MASTER are highlighted yellow, matching those on the MASTER sheet. |
+| **Date columns as text** | `Date` and `Date of Birth` are written as verbatim text to prevent day/month reinterpretation. |
 | **Data source** | Modified: values from the Daily Report. Cancelled: values from the MASTER. New: values from the Daily Report. |
 
 > ⚠️ **These sheets are rebuilt from scratch on every run.** Record or action their contents before running the macro again — previous results are not retained.
@@ -221,12 +236,14 @@ At the end of every successful run, a summary message is displayed showing:
 
 Open a new blank Excel workbook. This will become the add-in file and should contain nothing except the macro code.
 
-### Step 2 — Paste the macro code
+### Step 2 — Import the macro code
 
 1. Press `Alt + F11` to open the VBA Editor
-2. Right-click the project → **Insert → Module**
-3. Paste the complete macro code into the module
+2. Right-click the project → **Import File…**
+3. Select `BookwiseComparisonMacro.bas` from your local copy of this repository
 4. Close the VBA Editor
+
+> **Tip:** Importing the `.bas` file brings the whole module in as one unit and avoids the copy/paste errors that can occur when pasting code out of a chat window. To update to a future version later, remove the existing module first (right-click → **Remove**) and import the new `.bas`.
 
 ### Step 3 — Save as an Add-In
 
@@ -247,9 +264,11 @@ Open a new blank Excel workbook. This will become the add-in file and should con
 
 1. Go to **File → Options → Quick Access Toolbar**
 2. In the **Choose commands from** dropdown, select **Macros**
-3. Find `ReconcileDailyReport`, click **Add >>**
+3. Find `BookwiseReconcileDailyReportV3`, click **Add >>**
 4. Click **Modify** to set a display name and icon
 5. Click **OK**
+
+> **Upgrading from V1?** The procedure name changed from `ReconcileDailyReport` to `BookwiseReconcileDailyReportV3`. Any existing Quick Access Toolbar button bound to the old name will no longer run — remove it and add the new macro as above.
 
 > **Note:** When running from the Quick Access Toolbar, the macro uses `ActiveSheet.Parent` (not `ThisWorkbook`) to correctly reference the MASTER workbook rather than the add-in file itself.
 
@@ -260,19 +279,25 @@ Open a new blank Excel workbook. This will become the add-in file and should con
 | Message Received | Recommended Action |
 |---|---|
 | *This macro is only designed to run on the master sheet...* | Click the **MASTER** sheet tab so it is the active sheet, then run the macro again. |
+| *The MASTER sheet is currently protected (locked)...* | Go to the **Review** tab → **Unprotect Sheet**, then run the macro again. |
+| *Could not detect column headers in row 11 of this sheet...* | Ensure you are running the macro while the MASTER data sheet is active and that the header row is present in row 11. |
 | *No file selected. Macro cancelled.* | No action required. Run the macro again when ready and select a file. |
 | *The report search parameters appear to be different...* | Check you selected the correct Daily Report. The date range or filter settings in rows 2–8 do not match the MASTER sheet. |
+| *The column headers do not match between the MASTER and Daily report... [column named]* | Open the named column in both files and make the header text in row 11 identical (spelling, case, and order) within columns A to T. |
+| *Unable to format the data range as a table covering columns A to [letter]...* | Usually caused by merged cells overlapping the table area, or another table on the sheet. Check the MASTER sheet layout and try again. |
+| *No data rows found below the header in the MASTER sheet* / *No booking data found in the MASTER 'Book No.' column* | Confirm the MASTER sheet actually contains booking rows below row 11 and that the `Book No.` column is populated. |
 | *Duplicate 'Book No.' values detected... [rows listed]* | Open MASTER and resolve the listed duplicate Booking Numbers. Each must appear only once before the macro can run. |
 | *Column 'Book No.' was not found in MASTER / DAILY header row 11 within columns A to T* | Check the column header is spelled exactly as `Book No.` (including the full stop) and falls within columns A to T. |
 | *Column 'Patient' was not found in MASTER header row 11 within columns A to T* | Check the `Patient` column header is present and correctly spelled within columns A to T. |
 | *Blank 'Book No.' values found in MASTER rows: [rows listed]* | Open MASTER and investigate the listed rows. Add the missing Booking Number or remove the incomplete row. All relevant booking rows must have a Booking Number. |
+| *An unexpected error occurred during reconciliation. Error [n]...* | The Daily file has not been saved or modified. Note the error number/description and retry; if it persists, report it with the message shown. |
 
 ---
 
 ## 11. Important Reminders
 
-> **Always run the macro from the MASTER sheet.**
-> The macro will stop and alert you if the wrong sheet is active. Check the sheet tab before clicking Run.
+> **Always run the macro from the MASTER sheet, and make sure it is unlocked.**
+> The macro will stop and alert you if the wrong sheet is active or if the sheet is protected. Check the sheet tab and protection state before clicking Run.
 
 > **Action review sheets before running the macro again.**
 > All three review sheets are wiped and rebuilt on every run. Copy or save the content before running again if you need to retain a record of a previous reconciliation.
@@ -280,42 +305,73 @@ Open a new blank Excel workbook. This will become the add-in file and should con
 > **The macro never changes booking data.**
 > Only colour highlights are applied to the MASTER sheet. All booking data values remain exactly as they were. The Daily Report is opened read-only and cannot be changed by this macro under any circumstances.
 
-> **Only columns A to T are considered.**
-> Any data in columns U onwards is completely ignored, regardless of how many columns exist in either file.
+> **Only columns A to T are compared.**
+> Any data in columns U onwards is ignored by the comparison, regardless of how many columns exist in either file.
 
 > **Medicare Number, Consultant, and Postcode changes are not flagged.**
 > Changes to these three columns are intentionally excluded from the comparison. A booking that differs only in these fields will not appear as modified. This is by design.
+
+> **Date, Date of Birth, and Start Time formatting differences are not flagged.**
+> These fields are normalised before comparison so that equivalent values stored in different formats/types are treated as equal. Only genuine differences in the underlying date or time are flagged.
+
+---
+
+## 12. Version History
+
+Versions are tracked in Git. Each named release is retrievable via its tag (`git checkout <tag>`), and the latest version is always the top of the branch.
+
+| Version | Procedure Name | Highlights |
+|---|---|---|
+| **V3.1** *(current)* | `BookwiseReconcileDailyReportV3` | Date / Date of Birth **comparison** normalised to canonical `dd/mm/yyyy` so a real date value and a text date are treated as equal. Procedure name retained from V3 so the Quick Access Toolbar binding is not broken by the point release. |
+| **V3** | `BookwiseReconcileDailyReportV3` | Date / Date of Birth copied to review sheets as verbatim **text** (prevents `dd/mm` ↔ `mm/dd` corruption on copy). Locked-sheet detection, full A:T header-match validation, and dynamic MASTER table conversion/resize. |
+| **v1.2** | `BookwiseReconcileDailyReportV3` | Start Time comparison normalised to `hh:mm`. |
+| **v1** | `ReconcileDailyReport` | Original release. Highlighting, three review sheets, audit log, core safeguards. |
+
+> To retrieve the original version: `git checkout v1`. To return to the latest: `git checkout <default-branch>`.
 
 ---
 
 ## Module Structure
 
 ```
-ReconcileDailyReport.bas
+BookwiseComparisonMacro.bas
 │
-├── ReconcileDailyReport()       Main sub — orchestrates all steps
+├── BookwiseReconcileDailyReportV3()   Main sub — orchestrates all steps
 │
-├── StandardiseFont()            Sets fonts to Calibri on both sheets
-│                                before comparison (neutralises Wingdings)
+├── ColLetter()                        Converts a column number to its Excel
+│                                       letter(s), used in error messages
 │
-├── SafeText()                   Safe variant-to-string conversion;
-│                                returns "" for Null, Empty, or errors
+├── StandardiseFont()                  Sets fonts to Calibri across the A:T
+│                                       compare range (neutralises Wingdings)
 │
-├── FindHeaderColumn()           Searches row 11 up to Column T for a
-│                                header name (case-insensitive)
+├── SafeText()                          Safe variant-to-string conversion;
+│                                       returns "" for Null, Empty, or errors
 │
-├── SetupReviewSheet()           Creates or fully clears a review sheet,
-│                                writes headers, adds Dt/Tm Added by Macro
+├── NormaliseTime()                     Normalises a time to "hh:mm" for
+│                                       comparison (value vs text time)
 │
-├── CopyRowWithTimestamp()       Copies a row as values only with timestamp;
-│                                used for Cancelled and New Bookings sheets
+├── NormaliseDate()                     Normalises a date to "dd/mm/yyyy" for
+│                                       comparison; parses text as d/m/y
+│                                       (Australian), never guesses
 │
-├── CopyModifiedRow()            Copies the DAILY version of a modified row,
-│                                applies yellow highlights for changed cells,
-│                                respects excluded columns
+├── CopyDateAsText()                    Writes a date to a review cell as
+│                                       verbatim text (no dd/mm ↔ mm/dd coercion)
 │
-└── GetOrCreateAuditSheet()      Returns the visible, protected audit log
-                                 sheet, creating and formatting it on first run
+├── FindHeaderColumn()                  Searches row 11 up to Column T for a
+│                                       header name (case-insensitive)
+│
+├── SetupReviewSheet()                  Creates or fully clears a review sheet,
+│                                       writes headers, adds Dt/Tm Added by Macro
+│
+├── CopyRowWithTimestamp()              Copies a row as values only with timestamp;
+│                                       used for Cancelled and New Bookings sheets
+│
+├── CopyModifiedRow()                   Copies the DAILY version of a modified row,
+│                                       applies yellow highlights for changed cells,
+│                                       respects excluded columns
+│
+└── GetOrCreateAuditSheet()             Returns the visible, protected audit log
+                                        sheet, creating and formatting it on first run
 ```
 
 ---
