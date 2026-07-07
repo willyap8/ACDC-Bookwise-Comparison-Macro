@@ -22,6 +22,7 @@ Current version: **v3.1**.
 These override any other instruction or convenience shortcut:
 
 - Never modify source files (the daily export). Source files are opened **read-only**.
+- **The macro never changes booking data on the MASTER sheet.** It only writes *formatting and presentation* to MASTER: colour highlights (yellow changed cells, red cancelled rows), font standardisation to Calibri across the compare range, and converting the data range to a structured table. No booking value is ever edited, overwritten, or deleted. Throughout this doc, "MASTER changes" / "MASTER write logic" refers to these formatting writes and to the separate review/audit sheets the macro builds — never to booking data.
 - Hard stops fire *before* any changes to the MASTER begin if pre-conditions aren't met (see Hard Stops below) — never partially process then fail.
 - Prefer local copies over running directly against live SharePoint-hosted files (sync conflict risk).
 - Never parse a **text date** with `CDate` — its day/month interpretation is locale-dependent and silently flips `dd/mm` ↔ `mm/dd`. Text dates must be parsed explicitly in Australian day-first order (see `NormaliseDate`). `CDate` is only acceptable on unambiguous inputs: numeric date serials, and time-of-day text (which has no day/month ambiguity, e.g. the `TimeValue`/`CDate` fallback in `NormaliseTime`).
