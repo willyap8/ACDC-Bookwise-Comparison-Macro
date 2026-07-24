@@ -55,6 +55,8 @@ Public Sub BookwiseReconcileDailyReportV3()
     Dim medicareCol     As Long
     Dim consultantCol   As Long
     Dim postcodeCol     As Long
+    Dim nurseCol        As Long
+    Dim chairCol        As Long
     Dim dateCol         As Long
     Dim dobCol          As Long
     Dim dailyBookCol    As Long
@@ -330,6 +332,8 @@ Public Sub BookwiseReconcileDailyReportV3()
     medicareCol = FindHeaderColumn(wsMaster, "Medicare Number", compareCol)
     consultantCol = FindHeaderColumn(wsMaster, "Consultant", compareCol)
     postcodeCol = FindHeaderColumn(wsMaster, "Postcode", compareCol)
+    nurseCol = FindHeaderColumn(wsMaster, "Nurse", compareCol)
+    chairCol = FindHeaderColumn(wsMaster, "Chair", compareCol)
     dateCol = FindHeaderColumn(wsMaster, "Date", compareCol)
     dobCol = FindHeaderColumn(wsMaster, "Date of Birth", compareCol)
 
@@ -523,6 +527,8 @@ Public Sub BookwiseReconcileDailyReportV3()
                 If medicareCol > 0 And j = medicareCol Then isExcluded = True
                 If consultantCol > 0 And j = consultantCol Then isExcluded = True
                 If postcodeCol > 0 And j = postcodeCol Then isExcluded = True
+                If nurseCol > 0 And j = nurseCol Then isExcluded = True
+                If chairCol > 0 And j = chairCol Then isExcluded = True
                 If isExcluded Then GoTo NextCompareCol
 
                 masterVal = SafeText(wsMaster.Cells(i, j).Value)
@@ -557,7 +563,8 @@ NextCompareCol:
                 Call CopyModifiedRow( _
                     wsDaily, wsMod, dailyRow, wsMaster, i, _
                     patientCol, runTime, startTimeCol, compareCol, _
-                    medicareCol, consultantCol, postcodeCol, dateCol, dobCol)
+                    medicareCol, consultantCol, postcodeCol, nurseCol, chairCol, _
+                    dateCol, dobCol)
                 modifiedCount = modifiedCount + 1
             End If
 
@@ -1020,7 +1027,7 @@ End Sub
 '  Highlights yellow in review sheet only where DAILY differs
 '  from MASTER - applying same Patient case rule, Start Time
 '  normalisation, and Date/DOB normalisation as the main loop.
-'  Excluded columns (Medicare Number, Consultant, Postcode)
+'  Excluded columns (Medicare Number, Consultant, Postcode, Nurse, Chair)
 '  are copied but never highlighted yellow in the review sheet.
 '  Appends run timestamp in the "Dt/Tm Added by Macro" column.
 ' ============================================================
@@ -1029,7 +1036,8 @@ Public Sub CopyModifiedRow(wsDaily As Worksheet, wsMod As Worksheet, _
                             masterRow As Long, patientCol As Long, _
                             ts As Date, startTimeCol As Long, compareCol As Long, _
                             medicareCol As Long, consultantCol As Long, _
-                            postcodeCol As Long, dateCol As Long, dobCol As Long)
+                            postcodeCol As Long, nurseCol As Long, chairCol As Long, _
+                            dateCol As Long, dobCol As Long)
     Dim nextRow    As Long
     Dim j          As Long
     Dim cellVal    As Variant
@@ -1062,6 +1070,8 @@ Public Sub CopyModifiedRow(wsDaily As Worksheet, wsMod As Worksheet, _
         If medicareCol > 0 And j = medicareCol Then isExcluded = True
         If consultantCol > 0 And j = consultantCol Then isExcluded = True
         If postcodeCol > 0 And j = postcodeCol Then isExcluded = True
+        If nurseCol > 0 And j = nurseCol Then isExcluded = True
+        If chairCol > 0 And j = chairCol Then isExcluded = True
 
         If Not isExcluded Then
             masterVal = SafeText(wsMaster.Cells(masterRow, j).Value)

@@ -125,14 +125,16 @@ When a modified booking is detected, the macro:
 - Highlights the same changed cells yellow within the review sheet
 - Records the exact run date and time in the **Dt/Tm Added by Macro** column
 
-#### Special Rule: Three Columns Are Excluded From Comparison
+#### Special Rule: Five Columns Are Excluded From Comparison
 
-> Changes to the following three columns are **completely ignored** when deciding whether a booking is modified:
+> Changes to the following five columns are **completely ignored** when deciding whether a booking is modified:
 > - **Medicare Number**
 > - **Consultant**
 > - **Postcode**
+> - **Nurse**
+> - **Chair**
 >
-> If the only differences between the MASTER and Daily Report rows are in these three columns, the booking will **not** be highlighted, will **not** appear in Modified Bookings to Review, and will **not** be counted as modified.
+> If the only differences between the MASTER and Daily Report rows are in these five columns, the booking will **not** be highlighted, will **not** appear in Modified Bookings to Review, and will **not** be counted as modified.
 
 #### Special Rule: Patient Name Capitalisation
 
@@ -308,8 +310,8 @@ Open a new blank Excel workbook. This will become the add-in file and should con
 > **Only columns A to T are compared.**
 > Any data in columns U onwards is ignored by the comparison, regardless of how many columns exist in either file.
 
-> **Medicare Number, Consultant, and Postcode changes are not flagged.**
-> Changes to these three columns are intentionally excluded from the comparison. A booking that differs only in these fields will not appear as modified. This is by design.
+> **Medicare Number, Consultant, Postcode, Nurse, and Chair changes are not flagged.**
+> Changes to these five columns are intentionally excluded from the comparison. A booking that differs only in these fields will not appear as modified. This is by design.
 
 > **Date, Date of Birth, and Start Time formatting differences are not flagged.**
 > These fields are normalised before comparison so that equivalent values stored in different formats/types are treated as equal. Only genuine differences in the underlying date or time are flagged.
