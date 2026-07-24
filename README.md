@@ -1,10 +1,10 @@
-# ACDC Data Migration — Bookwise Daily Comparison Macro V3.1
+# ACDC Data Migration — Bookwise Daily Comparison Macro V3.2
 
 > **BookwiseReconcileDailyReportV3** · VBA Excel Add-In · Clinical scheduling environment
 
 A production-ready Excel Add-In that automatically compares a MASTER booking schedule against a daily Bookwise report, flags differences, and organises results into dedicated review sheets — without modifying any source data.
 
-> **Version note:** The current source of truth is **V3.1** (`BookwiseComparisonMacro.bas`). Earlier releases are preserved as Git tags — for example, check out `v1` to retrieve the original version. See [Version History](#12-version-history).
+> **Version note:** The current source of truth is **V3.2** (`BookwiseComparisonMacro.bas`). Earlier releases are preserved as Git tags — for example, check out `v1` to retrieve the original version. See [Version History](#12-version-history).
 
 ---
 
@@ -27,7 +27,7 @@ A production-ready Excel Add-In that automatically compares a MASTER booking sch
 
 ## 1. What Does This Macro Do?
 
-The **ACDC Data Migration — Bookwise Daily Comparison Macro V3.1** is an automated comparison tool built into the MASTER scheduling workbook. Its purpose is to compare the MASTER booking schedule against a freshly generated Bookwise Daily Report, and clearly flag any differences so that staff can review and act on changes quickly and with confidence.
+The **ACDC Data Migration — Bookwise Daily Comparison Macro V3.2** is an automated comparison tool built into the MASTER scheduling workbook. Its purpose is to compare the MASTER booking schedule against a freshly generated Bookwise Daily Report, and clearly flag any differences so that staff can review and act on changes quickly and with confidence.
 
 The macro does **not** change any booking data in either the MASTER sheet or the Daily Report. It only applies colour highlights to draw attention to changes, and copies relevant rows into dedicated review sheets for easy actioning.
 
@@ -64,7 +64,7 @@ The macro is installed as an Excel Add-In (`.xlam`), making it available wheneve
 | **6** | A summary message appears on screen showing totals for Modified, Cancelled, and New bookings. |
 | **7** | Check the three review sheets for bookings that need attention. Each sheet is rebuilt fresh on every run. |
 
-> **Procedure name:** In V3.1 the macro procedure is named `BookwiseReconcileDailyReportV3`. If you are upgrading from V1 (`ReconcileDailyReport`), your existing Quick Access Toolbar button will point to the old name and must be re-pointed to the new macro (see [Installation](#9-installation-as-an-excel-add-in), Step 5).
+> **Procedure name:** In V3.2 the macro procedure is named `BookwiseReconcileDailyReportV3`. If you are upgrading from V1 (`ReconcileDailyReport`), your existing Quick Access Toolbar button will point to the old name and must be re-pointed to the new macro (see [Installation](#9-installation-as-an-excel-add-in), Step 5).
 
 ---
 
@@ -324,7 +324,8 @@ Versions are tracked in Git. Each named release is retrievable via its tag (`git
 
 | Version | Procedure Name | Highlights |
 |---|---|---|
-| **V3.1** *(current)* | `BookwiseReconcileDailyReportV3` | Date / Date of Birth **comparison** normalised to canonical `dd/mm/yyyy` so a real date value and a text date are treated as equal. Procedure name retained from V3 so the Quick Access Toolbar binding is not broken by the point release. |
+| **V3.2** *(current)* | `BookwiseReconcileDailyReportV3` | `Nurse` and `Chair` are excluded from modification detection and modified-review highlighting, alongside Medicare Number, Consultant, and Postcode. Procedure name retained to preserve the Quick Access Toolbar binding. |
+| **V3.1** | `BookwiseReconcileDailyReportV3` | Date / Date of Birth **comparison** normalised to canonical `dd/mm/yyyy` so a real date value and a text date are treated as equal. Procedure name retained from V3 so the Quick Access Toolbar binding is not broken by the point release. |
 | **V3** | `BookwiseReconcileDailyReportV3` | Date / Date of Birth copied to review sheets as verbatim **text** (prevents `dd/mm` ↔ `mm/dd` corruption on copy). Locked-sheet detection, full A:T header-match validation, and dynamic MASTER table conversion/resize. |
 | **v1.2** | `BookwiseReconcileDailyReportV3` | Start Time comparison normalised to `hh:mm`. |
 | **v1** | `ReconcileDailyReport` | Original release. Highlighting, three review sheets, audit log, core safeguards. |

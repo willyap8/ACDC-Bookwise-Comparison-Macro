@@ -1,10 +1,14 @@
 Option Explicit
 
 ' ============================================================
-'  ACDC Data Migration - Bookwise Daily Comparison Macro V3.1
+'  ACDC Data Migration - Bookwise Daily Comparison Macro V3.2
 '  Sub: BookwiseReconcileDailyReportV3
 '  Paste this entire module into the add-in workbook (.xlam).
 '  Run while the MASTER data worksheet is the active sheet.
+'
+'  V3.2 change: Nurse and Chair are excluded from modification
+'  detection and modified-review highlighting, alongside Medicare
+'  Number, Consultant, and Postcode.
 '
 '  V3.1 change: Date and Date of Birth COMPARISON is now
 '  normalised to a canonical dd/mm/yyyy string via NormaliseDate()
@@ -623,7 +627,7 @@ NextMasterRow:
            "Modified bookings to review:  " & modifiedCount & vbCrLf & _
            "Cancelled bookings to review: " & cancelledCount & vbCrLf & _
            "New bookings to review:       " & newCount, _
-           vbInformation, "Reconciliation Summary - V3.1"
+           vbInformation, "Reconciliation Summary - V3.2"
 
     GoTo CleanExit
 

@@ -15,7 +15,7 @@ Deployed as an Excel Add-In (`.xlam`), launched via a Quick Access Toolbar (QAT)
 
 Compares a **MASTER Bookwise sheet** against **daily Bookwise exports**, flagging discrepancies for review.
 
-Current version: **v3.1**.
+Current version: **v3.2**.
 
 ## Non-negotiable rules — data integrity
 
@@ -33,6 +33,10 @@ These override any other instruction or convenience shortcut:
 - Always reference `ActiveSheet.Parent`, **never** `ThisWorkbook` — the macro runs from the add-in, not the target workbook.
 - Sub names must stay stable across point releases. The QAT button binds to a specific sub name; renaming it silently breaks the entry point for every installed user. The current entry point is `BookwiseReconcileDailyReportV3`.
 - Re-runs must be idempotent: column-insertion logic reuses/renames legacy columns rather than duplicating; review sheets are cleared and fully rebuilt each run, not appended to.
+
+## v3.2-specific behaviour
+
+- `Nurse` and `Chair` are excluded from modified-booking detection and modified-review highlighting, alongside Medicare Number, Consultant, and Postcode.
 
 ## v3.1-specific behaviour
 
